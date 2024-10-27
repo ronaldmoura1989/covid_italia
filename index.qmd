@@ -1,0 +1,101 @@
+---
+title: "covid_italia"
+---
+
+This is a Quarto website.
+
+## Libraries
+
+```{r}
+
+library(tidyverse)
+library(giscoR)
+library(ggiraph)
+
+```
+
+## Download updated data from Github
+
+```{r, message=FALSE, warning=FALSE}
+
+national_data = read_csv("https://raw.githubusercontent.com/pcm-dpc/COVID-19/refs/heads/master/dati-andamento-nazionale/dpc-covid19-ita-andamento-nazionale.csv")
+
+regional_data = read_csv("https://raw.githubusercontent.com/pcm-dpc/COVID-19/refs/heads/master/dati-regioni/dpc-covid19-ita-regioni.csv")
+
+province_data = read_csv("https://raw.githubusercontent.com/pcm-dpc/COVID-19/refs/heads/master/dati-province/dpc-covid19-ita-province.csv")
+
+
+```
+
+## Download geographical coordinates
+
+```{r}
+
+italy_province = gisco_get_nuts(
+  year = "2021", 
+  nuts_level = 3,
+  epsg = 3035,
+  country = "Italy") |> 
+  as_tibble() |> 
+  janitor::clean_names()
+
+italy_region = gisco_get_nuts(
+  year = "2021", 
+  nuts_level = 2,
+  epsg = 3035,
+  country = "Italy") |> 
+  as_tibble() |> 
+  janitor::clean_names()
+```
+
+## Add coordinates to the data
+
+```{r}
+
+province_data = province_data %>%
+  mutate(data = as.Date(data, tryFormats = c("%Y-%m-%d"))) %>%
+  filter(!denominazione_provincia %in% 
+          c("In fase di definizione/aggiornamento", 
+            "Fuori Regione / Provincia Autonoma")) %>%
+  left_join(., 
+            italy_province[,c(6, 10)], 
+            join_by(denominazione_provincia == nuts_name)) %>% 
+  select(-c(lat, long, note, starts_with("codice_nuts")))
+```
+
+## Plot the interative map
+
+```{r}
+
+province_data |>
+  filter(data == "2020-02-24") |> 
+  ggplot() +
+  geom_sf(data = italy_province, 
+          aes(geometry = geometry), 
+          fill = "white") +
+  geom_sf(aes(geometry = geometry, 
+              fill = denominazione_regione), 
+          show.legend = FALSE) +
+  theme_void()
+
+```
+
+```{r}
+
+gg_plt = province_data |>
+  filter(data == "2020-02-24") |> 
+  ggplot() +
+  geom_sf(data = italy_province, 
+          aes(geometry = geometry), 
+          fill = "black") +
+  geom_sf_interactive(
+    data = .,
+    fill = NA,
+    aes(
+        data_id = codice_povincia, 
+        tooltip = glue::glue('{denominazione_provincia}'), 
+          )
+  )
+
+girafe(ggobj = gg_plt)
+```
